@@ -10,6 +10,7 @@ import com.itextpdf.layout.element.Table;
 import com.itextpdf.layout.properties.TextAlignment;
 import com.itextpdf.layout.properties.UnitValue;
 import org.apache.poi.xwpf.usermodel.*;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
@@ -19,6 +20,8 @@ import java.util.List;
 
 @Service
 public class ExportService {
+    @Autowired
+    private DomainCheckerService domainCheckerService;
     
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     
@@ -32,15 +35,21 @@ public class ExportService {
             
             // Write header
             csvWriter.writeNext(new String[]{
-                "Domain", "Reachable", "HTTP Status", "Virus Check", "Checked At", "Virus Details"
+                "Domain", "Reachable", "HTTP Status", "Curl Check", "Virus Check", "Checked At", "Virus Details"
             });
             
             // Write data
             for (DomainResult result : results) {
+                String curl = result.getCurlCheck();
+                if (curl == null || curl.isBlank()) {
+                    // compute on the fly for exports to reflect current connectivity
+                    curl = domainCheckerService.checkCurlStyle(result.getDomain());
+                }
                 csvWriter.writeNext(new String[]{
                     result.getDomain(),
                     result.getReachable() ? "Yes" : "No",
                     result.getHttpStatus() != null ? result.getHttpStatus().toString() : "No Response",
+                    curl != null ? curl : "-",
                     result.getVirusCheck() != null ? result.getVirusCheck() : "N/A",
                     result.getCreatedAt() != null ? result.getCreatedAt().format(DATE_FORMATTER) : "N/A",
                     result.getVirusDetails() != null ? result.getVirusDetails() : ""
@@ -83,7 +92,9 @@ public class ExportService {
             long totalDomains = results.size();
             long reachableCount = results.stream().mapToLong(r -> r.getReachable() ? 1 : 0).sum();
             long safeCount = results.stream().mapToLong(r -> 
-                r.getVirusCheck() != null && r.getVirusCheck().toLowerCase().contains("safe") ? 1 : 0).sum();
+                r.getVirusCheck() != null && r.getVirusCheck().toLowerCase().contains("safe") &&
+                !(r.getVirusCheck().toLowerCase().contains("unsafe") || r.getVirusCheck().toLowerCase().contains("malicious") || r.getVirusCheck().toLowerCase().contains("suspicious"))
+                ? 1 : 0).sum();
             
             Paragraph summary = new Paragraph(String.format(
                 "Total Domains: %d | Reachable: %d | Safe: %d | Generated: %s",

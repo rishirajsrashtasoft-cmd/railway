@@ -10,7 +10,9 @@ A Spring Boot application that checks domain reachability, HTTP status, and secu
 - **Database Storage**: Stores all check results in MySQL database
 - **Web Interface**: Beautiful responsive UI built with Thymeleaf and Bootstrap
 - **Bulk Checking**: Check multiple domains at once (like your PowerShell script)
+- **Exports**: Download results as CSV, PDF, or Word
 - **REST API**: JSON endpoints for programmatic access
+- **Windows Helpers**: Batch/PowerShell scripts and desktop shortcut launcher
 
 ## Prerequisites
 
@@ -42,11 +44,23 @@ spring.datasource.url=jdbc:mysql://localhost:3306/domain_checker
 spring.datasource.username=domain_user
 spring.datasource.password=your_password
 
-# VirusTotal API key is already configured from your PowerShell script
-virustotal.api.key=5830515a915de1fbf030c26f92a0eb22c85dac98ce2de397d080f24c52aaa7d3
+# VirusTotal API key
+virustotal.api.key=YOUR_VIRUSTOTAL_API_KEY
+virustotal.api.url=https://www.virustotal.com/api/v3/domains/
+
+# HTTP client timeouts (milliseconds)
+http.client.timeout=5000
+http.client.connection-timeout=3000
+
+# Optional basic UI credentials (if used)
+app.security.user=admin
+app.security.pass=admin123
+
+# Server port
+server.port=8080
 ```
 
-### 3. Build and Run
+### 3. Build and Run (Maven)
 
 ```bash
 # Build the application
@@ -58,6 +72,48 @@ mvn spring-boot:run
 
 The application will start on `http://localhost:8080`
 
+### 4. Run as JAR
+
+```bash
+mvn clean package -DskipTests
+java -jar target/domain_checker.jar
+```
+
+### 5. Windows helper scripts (root folder)
+
+- `build-and-run.bat` — builds the JAR and starts the app
+- `run-jar.bat` — runs the already built JAR
+- `domain-checker-launcher.bat` — launcher used by desktop shortcut
+- PowerShell helpers to create shortcuts: `create-desktop-shortcut.ps1`, `create-jar-shortcut.ps1`, `make-shortcut.ps1`, `create-shortcut-launcher.ps1`
+
+Desktop shortcut flow: shortcut → launcher BAT → runs `java -jar target\domain_checker.jar`.
+
+### 6. Docker (optional)
+
+Example multi-stage image:
+
+```dockerfile
+# Build
+FROM maven:3.9.6-eclipse-temurin-21 AS build
+WORKDIR /app
+COPY . .
+RUN mvn clean package -DskipTests
+
+# Run
+FROM eclipse-temurin:21-jdk
+WORKDIR /app
+COPY --from=build /app/target/domain_checker.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java","-jar","app.jar"]
+```
+
+Build and run:
+
+```bash
+docker build -t domain-checker .
+docker run -p 8080:8080 -e virustotal.api.key=YOUR_VT_KEY domain-checker
+```
+
 ## Usage
 
 ### Web Interface
@@ -65,6 +121,7 @@ The application will start on `http://localhost:8080`
 1. **Home Page** (`/`): Enter a domain name and click "Check Domain"
 2. **Bulk Check Page** (`/bulk`): Enter multiple domains (like your PowerShell script's domains.txt)
 3. **Results Page** (`/domains/list`): View all domain check results with statistics
+4. Export buttons on the results page: CSV, PDF, Word
 
 ### REST API Endpoints
 
@@ -110,7 +167,16 @@ src/
 │       ├── application.properties              # Application configuration
 │       └── templates/
 │           ├── index.html                      # Domain input form
-│           └── domain-list.html                # Results display table
+│           ├── domain-list.html                # Results display table
+│           └── bulk-check.html                 # Bulk input page
+├── build-and-run.bat                           # Build then run
+├── run-jar.bat                                 # Run packaged JAR
+├── domain-checker-launcher.bat                 # Desktop launcher
+├── create-desktop-shortcut.ps1                 # Create launcher shortcut
+├── create-jar-shortcut.ps1                     # Create direct JAR shortcut
+├── make-shortcut.ps1                           # Alternate shortcut helper
+├── create-shortcut-launcher.ps1                # Launcher shortcut helper
+├── Dockerfile                                  # Container build (optional)
 └── test/
     └── java/                                   # Test classes (placeholder)
 ```
@@ -120,8 +186,13 @@ src/
 ### Domain Checking Logic
 
 1. **Ping Check**: Uses `InetAddress.isReachable()` with 3-second timeout
-2. **HTTP Check**: Attempts HTTPS first, falls back to HTTP if needed
+2. **HTTP Check**: Attempts HTTP first, then HTTPS if needed
 3. **VirusTotal Check**: Calls VirusTotal API v3 to get domain reputation
+
+Exports:
+- CSV via OpenCSV
+- PDF via iText 7
+- Word via Apache POI (XWPF)
 
 ### Database Schema
 
@@ -151,8 +222,17 @@ The `domain_results` table contains:
 
 2. **VirusTotal API Issues**
    - Verify API key is valid
-   - Check API rate limits (500 requests/day for free tier)
+   - Check your account's API rate limits/quotas (per-minute and daily)
    - Ensure internet connectivity
+   - Test with curl to see exact status and headers:
+     ```bash
+     curl -s -D - -H "x-apikey: YOUR_KEY" -H "Accept: application/json" \
+       "https://www.virustotal.com/api/v3/domains/example.com"
+     ```
+     - 200: OK
+     - 401: Invalid/revoked key
+     - 403/429: Permission/quota/rate limit
+     - 5xx/timeout: transient/network issues
 
 3. **Domain Not Reachable**
    - Some domains block ping requests
@@ -167,6 +247,13 @@ Check application logs for detailed error information:
 logging.level.com.example.domainchecker=DEBUG
 ```
 
+## Optional: Daily automation
+
+If you need unattended daily re-checks:
+- Use Windows Task Scheduler to call a secured internal job endpoint or run the JAR with a batch mode argument (e.g., `--job=daily`).
+- Respect VirusTotal rate limits with small delays and retries on 429/5xx.
+- De-duplicate alert emails (send only on state change or once per day).
+
 ## License
 
 This project is provided as-is for educational and demonstration purposes.
@@ -174,39 +261,3 @@ This project is provided as-is for educational and demonstration purposes.
 ## Contributing
 
 Feel free to submit issues and pull requests to improve the application.
-
-
-Ah, I understand! You want to know how to update the JAR file and desktop shortcut after making code changes. Here's the process:
-🔄 After Making Code Changes - Update JAR & Shortcut:
-Step 1: Rebuild the JAR File
-
-# This rebuilds domain_checker.jar with your new code
-mvn clean package -DskipTests
-Step 2: The JAR is Automatically Updated
-The file target\domain_checker.jar gets replaced with your new code
-Your desktop shortcut automatically uses the new JAR (no changes needed!)
-Step 3: Test the Updated Application
-# Double-click your desktop shortcut
-# OR run manually:
-.\run-jar.bat
-🎯 Simple Workflow:
-1. ✏️  Change code in any .java or .html file
-2. 🔨  Run: mvn clean package -DskipTests  
-3. 🚀  Double-click desktop shortcut
-4. ✅  Your changes are live!
-⚡ Even Easier - Use the Build & Run Script:
-# This does BOTH steps at once:
-# 1. Rebuilds the JAR with your changes
-# 2. Starts the application immediately
-.\build-and-run.bat
-🔧 The Magic:
-Desktop shortcut → Points to domain-checker-launcher.bat
-Launcher → Runs java -jar target\domain_checker.jar
-JAR file → Gets replaced when you run mvn package
-Result → Desktop shortcut automatically uses your updated code!
-📋 No Need to Recreate Shortcut Because:
-✅ Shortcut points to the launcher script
-✅ Launcher script points to domain_checker.jar
-✅ JAR file gets replaced with new version
-✅ Same filename, new code inside!
-You only need to rebuild the JAR - the shortcut stays the same forever! 🎉

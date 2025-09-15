@@ -39,6 +39,7 @@ public class DomainCheckerService {
     public DomainCheckerService() {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(3000))
+                .followRedirects(HttpClient.Redirect.ALWAYS)
                 .build();
         this.objectMapper = new ObjectMapper();
     }
@@ -52,7 +53,35 @@ public class DomainCheckerService {
         // Populate details if available
         String details = getVirusTotalDetails(clean);
         result.setVirusDetails(details);
+        // Curl-style check (non-persisted)
+        String curlSummary = checkCurlStyle(clean);
+        result.setCurlCheck(curlSummary);
         return domainResultRepository.save(result);
+    }
+
+    /**
+     * Perform a curl-like HTTP check using Java HttpClient.
+     * Tries HTTPS first, then HTTP, follows redirects, returns a compact summary.
+     */
+    public String checkCurlStyle(String domain) {
+        String[] protocols = {"https://", "http://"};
+        for (String protocol : protocols) {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(protocol + domain))
+                        .timeout(Duration.ofMillis(Math.max(httpTimeout, 5000)))
+                        .header("User-Agent", "curl/8.0")
+                        .method("GET", HttpRequest.BodyPublishers.noBody())
+                        .build();
+                long start = System.nanoTime();
+                HttpResponse<Void> response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+                long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+                int code = response.statusCode();
+                return (protocol.startsWith("https") ? "HTTPS" : "HTTP") + " " + code + " (" + elapsedMs + " ms)";
+            } catch (Exception ignored) {
+            }
+        }
+        return "No Response";
     }
 
     public boolean checkReachable(String domain) {

@@ -26,6 +26,9 @@ public class DomainResult {
     @Column(name = "virus_details", length = 4000)
     private String virusDetails;
 
+    @Column(name = "curl_check")
+    private String curlCheck;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
@@ -62,6 +65,9 @@ public class DomainResult {
 
     public String getVirusDetails() { return virusDetails; }
     public void setVirusDetails(String virusDetails) { this.virusDetails = virusDetails; }
+
+    public String getCurlCheck() { return curlCheck; }
+    public void setCurlCheck(String curlCheck) { this.curlCheck = curlCheck; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

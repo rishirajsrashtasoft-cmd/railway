@@ -119,6 +119,7 @@
 
                         <!-- Main Form -->
                         <form th:action="@{/domains/bulk}" method="post">
+                            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
                             <div class="mb-3">
                                 <label for="domains" class="form-label fw-bold">
                                     <i class="fas fa-list me-2"></i>Domain List

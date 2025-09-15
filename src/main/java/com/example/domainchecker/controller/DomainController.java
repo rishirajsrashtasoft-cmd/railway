@@ -6,10 +6,6 @@ import com.example.domainchecker.service.DomainCheckerService;
 import com.example.domainchecker.service.ExportService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ByteArrayResource;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -88,11 +84,21 @@ public class DomainController {
             @RequestParam(value = "safety", required = false) String safety,
             @RequestParam(value = "startDate", required = false) String startDate,
             @RequestParam(value = "endDate", required = false) String endDate,
+            @RequestParam(value = "sort", required = false, defaultValue = "desc") String sort,
             @RequestParam(value = "page", required = false, defaultValue = "0") int page
     ) {
         try {
             List<DomainResult> all = domainResultRepository.findAllOrderByCreatedAtDesc();
             List<DomainResult> results = applyFilters(all, domainFilter, reachable, safety, startDate, endDate);
+
+            // Sort by time
+            java.util.Comparator<DomainResult> cmp = java.util.Comparator
+                    .comparing(DomainResult::getCreatedAt, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()));
+            if ("asc".equalsIgnoreCase(sort)) {
+                results.sort(cmp);
+            } else {
+                results.sort(cmp.reversed());
+            }
 
             // Pagination (page size 50)
             int pageSize = 50;
@@ -109,11 +115,23 @@ public class DomainController {
 
             // Calculate statistics on filtered set
             long reachableCount = results.stream().mapToLong(r -> Boolean.TRUE.equals(r.getReachable()) ? 1 : 0).sum();
-            long safeCount = results.stream().mapToLong(r ->
-                    r.getVirusCheck() != null && r.getVirusCheck().toLowerCase().contains("safe") ? 1 : 0).sum();
+            long safeCount = results.stream().mapToLong(r -> {
+                String vc = r.getVirusCheck();
+                if (vc == null) return 0;
+                String s = vc.toLowerCase();
+                boolean unsafeLike = s.contains("unsafe") || s.contains("malicious") || s.contains("suspicious");
+                return (!unsafeLike && s.contains("safe")) ? 1 : 0;
+            }).sum();
+            long unsafeCount = results.stream().mapToLong(r -> {
+                String vc = r.getVirusCheck();
+                if (vc == null) return 0;
+                String s = vc.toLowerCase();
+                return (s.contains("unsafe") || s.contains("malicious") || s.contains("suspicious")) ? 1 : 0;
+            }).sum();
 
             model.addAttribute("reachableCount", reachableCount);
             model.addAttribute("safeCount", safeCount);
+            model.addAttribute("unsafeCount", unsafeCount);
 
             // Preserve filter values in the UI
             model.addAttribute("domainFilter", Objects.toString(domainFilter, ""));
@@ -121,10 +139,11 @@ public class DomainController {
             model.addAttribute("safetyFilter", Objects.toString(safety, ""));
             model.addAttribute("startDateFilter", normalizeIsoDate(startDate));
             model.addAttribute("endDateFilter", normalizeIsoDate(endDate));
+            model.addAttribute("sortFilter", Objects.toString(sort, "desc"));
 
             // Query string for export links
             model.addAttribute("filtersQuery", buildFiltersQuery(domainFilter, reachable, safety,
-                    normalizeIsoDate(startDate), normalizeIsoDate(endDate)));
+                    normalizeIsoDate(startDate), normalizeIsoDate(endDate), sort));
 
         } catch (Exception e) {
             model.addAttribute("error", "Error loading domain results: " + e.getMessage());
@@ -400,13 +419,14 @@ public class DomainController {
     }
 
     private String buildFiltersQuery(String domainFilter, String reachable, String safety,
-                                     String startDate, String endDate) {
+                                     String startDate, String endDate, String sort) {
         StringBuilder sb = new StringBuilder();
         appendQuery(sb, "domain", domainFilter);
         appendQuery(sb, "reachable", reachable);
         appendQuery(sb, "safety", safety);
         appendQuery(sb, "startDate", startDate);
         appendQuery(sb, "endDate", endDate);
+        appendQuery(sb, "sort", sort);
         return sb.toString();
     }
 
