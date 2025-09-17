@@ -175,7 +175,17 @@ public class DomainController {
      * Delete a domain result
      */
     @PostMapping("/domains/{id}/delete")
-    public String deleteDomainResult(@PathVariable Long id, RedirectAttributes redirectAttributes) {
+    public String deleteDomainResult(
+            @PathVariable Long id,
+            RedirectAttributes redirectAttributes,
+            @RequestParam(value = "domain", required = false) String domainFilter,
+            @RequestParam(value = "reachable", required = false) String reachable,
+            @RequestParam(value = "safety", required = false) String safety,
+            @RequestParam(value = "startDate", required = false) String startDate,
+            @RequestParam(value = "endDate", required = false) String endDate,
+            @RequestParam(value = "sort", required = false, defaultValue = "desc") String sort,
+            @RequestParam(value = "page", required = false) Integer page
+    ) {
         try {
             if (domainResultRepository.existsById(id)) {
                 domainResultRepository.deleteById(id);
@@ -186,8 +196,51 @@ public class DomainController {
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Error deleting domain result: " + e.getMessage());
         }
-        
-        return "redirect:/domains/list";
+        // Preserve filters via redirect URL
+        String query = buildFiltersQuery(domainFilter, reachable, safety,
+                normalizeIsoDate(startDate), normalizeIsoDate(endDate), sort);
+        if (page != null && page >= 0) {
+            if (!query.isEmpty()) query += "&";
+            query += "page=" + page;
+        }
+        return query.isEmpty() ? "redirect:/domains/list" : ("redirect:/domains/list?" + query);
+    }
+
+    /**
+     * Run Selenium check for a given domain row and persist results. Redirects back with filters retained.
+     */
+    @PostMapping("/domains/{id}/selenium")
+    public String runSelenium(
+            @PathVariable Long id,
+            RedirectAttributes redirectAttributes,
+            @RequestParam(value = "domain", required = false) String domainFilter,
+            @RequestParam(value = "reachable", required = false) String reachable,
+            @RequestParam(value = "safety", required = false) String safety,
+            @RequestParam(value = "startDate", required = false) String startDate,
+            @RequestParam(value = "endDate", required = false) String endDate,
+            @RequestParam(value = "sort", required = false, defaultValue = "desc") String sort,
+            @RequestParam(value = "page", required = false) Integer page
+    ) {
+        try {
+            DomainResult result = domainResultRepository.findById(id).orElse(null);
+            if (result == null) {
+                redirectAttributes.addFlashAttribute("error", "Domain result not found");
+            } else {
+                domainCheckerService.runSeleniumCheck(result);
+                domainResultRepository.save(result);
+                redirectAttributes.addFlashAttribute("success", "Selenium check completed for: " + result.getDomain());
+            }
+        } catch (Exception e) {
+            redirectAttributes.addFlashAttribute("error", "Selenium error: " + e.getMessage());
+        }
+
+        String query = buildFiltersQuery(domainFilter, reachable, safety,
+                normalizeIsoDate(startDate), normalizeIsoDate(endDate), sort);
+        if (page != null && page >= 0) {
+            if (!query.isEmpty()) query += "&";
+            query += "page=" + page;
+        }
+        return query.isEmpty() ? "redirect:/domains/list" : ("redirect:/domains/list?" + query);
     }
     
     /**

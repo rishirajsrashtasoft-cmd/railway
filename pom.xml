@@ -96,6 +96,13 @@
             <version>5.2.3</version>
         </dependency>
 
+        <!-- Selenium WebDriver -->
+        <dependency>
+            <groupId>org.seleniumhq.selenium</groupId>
+            <artifactId>selenium-java</artifactId>
+            <version>4.23.0</version>
+        </dependency>
+
         <!-- Spring Boot Test Starter -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

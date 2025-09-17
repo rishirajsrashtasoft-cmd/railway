@@ -32,6 +32,22 @@ public class DomainResult {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    // ===== Selenium fields =====
+    @Column(name = "selenium_reachable")
+    private Boolean seleniumReachable;
+
+    @Column(name = "selenium_title")
+    private String seleniumTitle;
+
+    @Column(name = "selenium_page_source_length")
+    private Integer seleniumPageSourceLength;
+
+    @Column(name = "selenium_load_time_ms")
+    private Long seleniumLoadTimeMs;
+
+    @Column(name = "selenium_error", length = 2000)
+    private String seleniumError;
+
     @PrePersist
     protected void onCreate() {
         if (createdAt == null) {
@@ -71,5 +87,20 @@ public class DomainResult {
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    public Boolean getSeleniumReachable() { return seleniumReachable; }
+    public void setSeleniumReachable(Boolean seleniumReachable) { this.seleniumReachable = seleniumReachable; }
+
+    public String getSeleniumTitle() { return seleniumTitle; }
+    public void setSeleniumTitle(String seleniumTitle) { this.seleniumTitle = seleniumTitle; }
+
+    public Integer getSeleniumPageSourceLength() { return seleniumPageSourceLength; }
+    public void setSeleniumPageSourceLength(Integer seleniumPageSourceLength) { this.seleniumPageSourceLength = seleniumPageSourceLength; }
+
+    public Long getSeleniumLoadTimeMs() { return seleniumLoadTimeMs; }
+    public void setSeleniumLoadTimeMs(Long seleniumLoadTimeMs) { this.seleniumLoadTimeMs = seleniumLoadTimeMs; }
+
+    public String getSeleniumError() { return seleniumError; }
+    public void setSeleniumError(String seleniumError) { this.seleniumError = seleniumError; }
 }
 

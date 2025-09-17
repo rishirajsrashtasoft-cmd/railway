@@ -15,6 +15,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 
+// Selenium
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.chrome.ChromeOptions;
+
 @Service
 public class DomainCheckerService {
 
@@ -56,6 +61,12 @@ public class DomainCheckerService {
         // Curl-style check (non-persisted)
         String curlSummary = checkCurlStyle(clean);
         result.setCurlCheck(curlSummary);
+        // Selenium lightweight check (optional best-effort)
+        try {
+            runSeleniumCheck(result);
+        } catch (Exception ignored) {
+            // keep non-fatal
+        }
         return domainResultRepository.save(result);
     }
 
@@ -162,7 +173,6 @@ public class DomainCheckerService {
             JsonNode data = root.path("data").path("attributes");
             JsonNode engines = data.path("last_analysis_results");
             StringBuilder sb = new StringBuilder();
-            int flagged = 0;
             if (engines.isObject()) {
                 engines.fields().forEachRemaining(entry -> {
                     String engine = entry.getKey();
@@ -192,6 +202,49 @@ public class DomainCheckerService {
         int slash = d.indexOf('/');
         if (slash != -1) d = d.substring(0, slash);
         return d;
+    }
+
+    /**
+     * Runs a headless Selenium check to collect:
+     * - whether page is reachable (navigation succeeds)
+     * - page title
+     * - page source length
+     * - load time in ms
+     * Populates respective fields in DomainResult. Best-effort: failures recorded in seleniumError.
+     * Requires Chrome/Chromium with compatible driver present on PATH or managed by Selenium Manager.
+     */
+    public void runSeleniumCheck(DomainResult result) {
+        WebDriver driver = null;
+        long start = System.nanoTime();
+        String url = "https://" + result.getDomain();
+        try {
+            ChromeOptions options = new ChromeOptions();
+            options.addArguments("--headless=new");
+            options.addArguments("--no-sandbox");
+            options.addArguments("--disable-dev-shm-usage");
+            options.addArguments("--window-size=1920,1080");
+            driver = new ChromeDriver(options);
+
+            driver.navigate().to(url);
+
+            String title = driver.getTitle();
+            String pageSource = driver.getPageSource();
+            long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+
+            result.setSeleniumReachable(true);
+            result.setSeleniumTitle(title);
+            result.setSeleniumPageSourceLength(pageSource != null ? pageSource.length() : 0);
+            result.setSeleniumLoadTimeMs(elapsedMs);
+        } catch (Exception e) {
+            result.setSeleniumReachable(false);
+            result.setSeleniumError(e.getClass().getSimpleName() + ": " + e.getMessage());
+            long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+            result.setSeleniumLoadTimeMs(elapsedMs);
+        } finally {
+            if (driver != null) {
+                try { driver.quit(); } catch (Exception ignored) {}
+            }
+        }
     }
 }
 
