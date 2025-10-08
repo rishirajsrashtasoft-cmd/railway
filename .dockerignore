@@ -1,0 +1,9 @@
+.git
+.idea
+*.md
+*.bat
+*.ps1
+*.iml
+documentation/
+pdf/
+Rishi's Project
