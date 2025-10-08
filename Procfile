@@ -1,1 +1,1 @@
-web: java -jar target/domain_checker.jar
+web: java -Dserver.port=$PORT -jar target/domain_checker.jar
