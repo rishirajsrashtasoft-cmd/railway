@@ -9,6 +9,8 @@ import com.itextpdf.layout.element.Paragraph;
 import com.itextpdf.layout.element.Table;
 import com.itextpdf.layout.properties.TextAlignment;
 import com.itextpdf.layout.properties.UnitValue;
+import com.itextpdf.layout.element.Image;
+import com.itextpdf.io.image.ImageDataFactory;
 import org.apache.poi.xwpf.usermodel.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.StringWriter;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Objects;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 @Service
 public class ExportService {
@@ -33,9 +38,10 @@ public class ExportService {
             StringWriter stringWriter = new StringWriter();
             CSVWriter csvWriter = new CSVWriter(stringWriter);
             
-            // Write header
+            // Write header (including Selenium columns)
             csvWriter.writeNext(new String[]{
-                "Domain", "Reachable", "HTTP Status", "Curl Check", "Virus Check", "Checked At", "Virus Details"
+                "Domain", "Reachable", "HTTP Status", "Curl Check", "Virus Check", "Checked At", "Virus Details",
+                "Selenium Reachable", "Selenium Title", "Selenium Source Length", "Selenium Load Time (ms)", "Selenium Error"
             });
             
             // Write data
@@ -52,7 +58,12 @@ public class ExportService {
                     curl != null ? curl : "-",
                     result.getVirusCheck() != null ? result.getVirusCheck() : "N/A",
                     result.getCreatedAt() != null ? result.getCreatedAt().format(DATE_FORMATTER) : "N/A",
-                    result.getVirusDetails() != null ? result.getVirusDetails() : ""
+                    result.getVirusDetails() != null ? result.getVirusDetails() : "",
+                    result.getSeleniumReachable() == null ? "N/A" : (result.getSeleniumReachable() ? "Yes" : "No"),
+                    result.getSeleniumTitle() != null ? result.getSeleniumTitle() : "",
+                    result.getSeleniumPageSourceLength() != null ? result.getSeleniumPageSourceLength().toString() : "",
+                    result.getSeleniumLoadTimeMs() != null ? result.getSeleniumLoadTimeMs().toString() : "",
+                    result.getSeleniumError() != null ? result.getSeleniumError() : ""
                 });
             }
             
@@ -103,8 +114,8 @@ public class ExportService {
             )).setMarginBottom(20);
             document.add(summary);
             
-            // Table
-            Table table = new Table(UnitValue.createPercentArray(new float[]{3, 1, 1, 2, 2}))
+            // Table (add Selenium columns)
+            Table table = new Table(UnitValue.createPercentArray(new float[]{3, 1, 1, 2, 2, 1.2f, 2, 1.3f, 1.3f}))
                     .setWidth(UnitValue.createPercentValue(100));
             
             // Table header
@@ -113,6 +124,10 @@ public class ExportService {
             table.addHeaderCell("HTTP Status");
             table.addHeaderCell("Virus Check");
             table.addHeaderCell("Checked At");
+            table.addHeaderCell("Sel Reach");
+            table.addHeaderCell("Sel Title");
+            table.addHeaderCell("Sel Src Len");
+            table.addHeaderCell("Sel Load ms");
             
             // Table data
             for (DomainResult result : results) {
@@ -123,6 +138,10 @@ public class ExportService {
                 String details = result.getVirusDetails();
                 table.addCell(details != null && !details.isBlank() ? check + " - " + details : check);
                 table.addCell(result.getCreatedAt() != null ? result.getCreatedAt().format(DATE_FORMATTER) : "N/A");
+                table.addCell(result.getSeleniumReachable() == null ? "N/A" : (result.getSeleniumReachable() ? "Yes" : "No"));
+                table.addCell(result.getSeleniumTitle() != null ? result.getSeleniumTitle() : "");
+                table.addCell(result.getSeleniumPageSourceLength() != null ? result.getSeleniumPageSourceLength().toString() : "");
+                table.addCell(result.getSeleniumLoadTimeMs() != null ? result.getSeleniumLoadTimeMs().toString() : "");
             }
             
             document.add(table);
@@ -181,8 +200,8 @@ public class ExportService {
             summaryRun.addBreak();
             summaryRun.addBreak();
             
-            // Table
-            XWPFTable table = document.createTable(results.size() + 1, 5);
+            // Table (add Selenium columns)
+            XWPFTable table = document.createTable(results.size() + 1, 9);
             
             // Table header
             XWPFTableRow headerRow = table.getRow(0);
@@ -191,9 +210,13 @@ public class ExportService {
             headerRow.getCell(2).setText("HTTP Status");
             headerRow.getCell(3).setText("Virus Check");
             headerRow.getCell(4).setText("Checked At");
+            headerRow.getCell(5).setText("Sel Reach");
+            headerRow.getCell(6).setText("Sel Title");
+            headerRow.getCell(7).setText("Sel Src Len");
+            headerRow.getCell(8).setText("Sel Load ms");
             
             // Make header bold
-            for (int i = 0; i < 5; i++) {
+            for (int i = 0; i < 9; i++) {
                 XWPFParagraph headerPara = headerRow.getCell(i).getParagraphs().get(0);
                 XWPFRun headerRun = headerPara.getRuns().get(0);
                 headerRun.setBold(true);
@@ -208,6 +231,10 @@ public class ExportService {
                 row.getCell(2).setText(result.getHttpStatus() != null ? result.getHttpStatus().toString() : "No Response");
                 row.getCell(3).setText(result.getVirusCheck() != null ? result.getVirusCheck() : "N/A");
                 row.getCell(4).setText(result.getCreatedAt() != null ? result.getCreatedAt().format(DATE_FORMATTER) : "N/A");
+                row.getCell(5).setText(result.getSeleniumReachable() == null ? "N/A" : (result.getSeleniumReachable() ? "Yes" : "No"));
+                row.getCell(6).setText(result.getSeleniumTitle() != null ? result.getSeleniumTitle() : "");
+                row.getCell(7).setText(result.getSeleniumPageSourceLength() != null ? result.getSeleniumPageSourceLength().toString() : "");
+                row.getCell(8).setText(result.getSeleniumLoadTimeMs() != null ? result.getSeleniumLoadTimeMs().toString() : "");
             }
             
             // Footer
@@ -225,6 +252,97 @@ public class ExportService {
             
         } catch (Exception e) {
             throw new RuntimeException("Error generating Word document", e);
+        }
+    }
+
+    /**
+     * Generate a simple, presentation-style PDF that highlights the application's features
+     * and optionally includes demo screenshots supplied as URLs or local file paths.
+     */
+    public byte[] exportFeaturesPresentation(List<String> imageSources, String customTitle) {
+        try {
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            PdfWriter pdfWriter = new PdfWriter(outputStream);
+            PdfDocument pdfDocument = new PdfDocument(pdfWriter);
+            Document document = new Document(pdfDocument);
+
+            String titleText = (customTitle == null || customTitle.isBlank())
+                    ? "Domain Checker — Features Overview" : customTitle.trim();
+
+            // Cover page
+            document.add(new Paragraph(titleText)
+                    .setTextAlignment(TextAlignment.CENTER)
+                    .setFontSize(24)
+                    .setBold()
+                    .setMarginTop(60));
+            document.add(new Paragraph("Presentation generated " + java.time.LocalDateTime.now().format(DATE_FORMATTER))
+                    .setTextAlignment(TextAlignment.CENTER)
+                    .setFontSize(10)
+                    .setMarginBottom(30));
+
+            // Features slide
+            Paragraph featuresHeader = new Paragraph("Key Features")
+                    .setFontSize(18)
+                    .setBold()
+                    .setMarginBottom(10);
+            document.add(featuresHeader);
+
+            document.add(new Paragraph("• Ping reachability (best-effort ICMP)").setMargin(0));
+            document.add(new Paragraph("• HTTP status checks with redirects").setMargin(0));
+            document.add(new Paragraph("• VirusTotal v3 reputation (optional API key)").setMargin(0));
+            document.add(new Paragraph("• Curl-style latency/status summary").setMargin(0));
+            document.add(new Paragraph("• Headless Selenium probe (title, source length, load time)").setMargin(0));
+            document.add(new Paragraph("• Web UI with filters, sorting, pagination, quick stats").setMargin(0));
+            document.add(new Paragraph("• Exports: CSV, PDF, Word").setMarginBottom(20));
+
+            // Screenshots slides (each image on its own page, scaled to fit width)
+            if (imageSources != null) {
+                for (String src : imageSources) {
+                    if (src == null || src.isBlank()) continue;
+                    try {
+                        Image image = createImage(src.trim());
+                        if (image != null) {
+                            document.add(new Paragraph(" ").setMarginTop(10));
+                            image.setAutoScale(true);
+                            document.add(image.setMarginTop(10));
+                            document.add(new Paragraph(Objects.toString(src, ""))
+                                    .setTextAlignment(TextAlignment.CENTER)
+                                    .setFontSize(9)
+                                    .setMarginBottom(20));
+                            // Start a new page after each screenshot
+                            document.add(new Paragraph(" "));
+                            pdfDocument.addNewPage();
+                        }
+                    } catch (Exception ignored) {
+                        // Skip images we can't load; continue generating the PDF
+                    }
+                }
+            }
+
+            // Remove the last trailing blank page if we added one without content
+            int totalPages = pdfDocument.getNumberOfPages();
+            if (totalPages > 1 && pdfDocument.getPage(totalPages).getContentBytes().length == 0) {
+                pdfDocument.removePage(totalPages);
+            }
+
+            document.close();
+            return outputStream.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("Error generating features presentation PDF", e);
+        }
+    }
+
+    private Image createImage(String source) throws Exception {
+        try {
+            if (source.startsWith("http://") || source.startsWith("https://")) {
+                return new Image(ImageDataFactory.create(source));
+            }
+            // Treat as local file path
+            Path path = Path.of(source);
+            byte[] bytes = Files.readAllBytes(path);
+            return new Image(ImageDataFactory.create(bytes));
+        } catch (Exception e) {
+            throw e;
         }
     }
 }

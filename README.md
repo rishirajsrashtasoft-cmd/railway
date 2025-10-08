@@ -181,6 +181,19 @@ src/
     └── java/                                   # Test classes (placeholder)
 ```
 
+## Documentation
+
+Detailed docs are available in the `documentation` folder:
+- [Overview](documentation/overview.md)
+- [Setup & Configuration](documentation/setup.md)
+- [Usage](documentation/usage.md)
+- [How it works](documentation/how-it-works.md)
+- [Exports](documentation/exports.md)
+- [Selenium](documentation/selenium.md)
+- [Troubleshooting](documentation/troubleshooting.md)
+- [FAQ](documentation/faq.md)
+- [Windows Scripts & Shortcuts](documentation/windows-scripts.md)
+
 ## Implementation Details
 
 ### Domain Checking Logic
@@ -193,6 +206,55 @@ Exports:
 - CSV via OpenCSV
 - PDF via iText 7
 - Word via Apache POI (XWPF)
+
+## How it works (end‑to‑end)
+
+1. A user submits a domain from the home page (or multiple domains from Bulk).
+2. `DomainCheckerService` cleans the input (strips protocol/path) and performs checks:
+   - Ping reachability via `InetAddress.isReachable()`
+   - HTTP status via `HttpURLConnection` (tries HTTP then HTTPS)
+   - Optional VirusTotal v3 lookup when `virustotal.api.key` is set
+   - A quick curl-style check using Java `HttpClient` for latency/status summary
+   - Best-effort headless Selenium load (title, page source length, load time)
+3. A `DomainResult` entity is saved to MySQL with all captured fields and timestamps.
+4. The results table (`/domains/list`) queries DB, applies in-memory filters and sorting, paginates, and shows quick stats (reachable/safe/unsafe).
+5. Export actions (`/export/csv`, `/export/pdf`, `/export/word`) render the currently filtered list into the chosen format.
+
+### Data lifecycle
+- New checks create rows in `domain_results` with fields for ping, HTTP, VirusTotal, curl summary, and Selenium.
+- Bulk checks loop through lines, ignoring blanks/quotes/tabs, and store each result.
+- Delete actions remove specific rows by `id`.
+- Filters/pagination do not mutate data; exports reflect the filtered view. The curl summary may be refreshed at export time to reflect current connectivity.
+
+### Exports: columns and meaning
+- CSV includes: Domain, Reachable, HTTP Status, Curl Check, Virus Check, Checked At, Virus Details, Selenium Reachable, Selenium Title, Selenium Source Length, Selenium Load Time (ms), Selenium Error.
+- PDF/Word include a summary header and a compact table with Selenium columns. PDF also appends VirusTotal flagging details inline when present.
+
+### Selenium check (optional)
+- Requires Chrome/Chromium and a compatible driver (Selenium Manager can auto-manage).
+- Runs headless with `--headless=new` and captures: navigation success, page title, source length, and elapsed time.
+- Failures are non-fatal and recorded in `seleniumError`; other checks still proceed.
+
+### Filters, sorting, pagination
+- Filters: by domain substring, reachability (yes/no), safety (safe/unsafe via VirusTotal text), and date range.
+- Sorting: by `createdAt` ascending/descending (default desc).
+- Pagination: 50 items per page with total counters and page controls.
+
+### Desktop shortcut and scripts
+- Shortcuts call `domain-checker-launcher.bat`, which runs `java -jar target\domain_checker.jar`.
+- Helper PowerShell scripts in the repo create shortcuts for the launcher or JAR.
+- Use `build-and-run.bat` to compile and start the app; `run-jar.bat` to run an existing JAR.
+
+### Security and API keys
+- Set `virustotal.api.key` in `application.properties` or as an environment variable. Respect API rate limits.
+- Server listens on `server.port` (8080 by default). If exposing externally, put it behind a reverse proxy and enable auth as needed.
+
+## FAQ
+
+- Why does ping show No but HTTP works? Many hosts block ICMP ping while allowing HTTP.
+- Why is VirusTotal "Not Checked"? Add a valid API key or you exceeded rate limits.
+- PDF/Word export is large/slow: Reduce page size with filters or skip Selenium columns if you customize the templates.
+- Selenium fails locally: Ensure Chrome is installed and on PATH; update drivers; try disabling headless to debug.
 
 ### Database Schema
 
